@@ -1,5 +1,28 @@
-import { GameObj, KaboomCtx } from "kaboom";
+import {
+  AreaComp,
+  BodyComp,
+  DoubleJumpComp,
+  GameObj,
+  HealthComp,
+  KaboomCtx,
+  OpacityComp,
+  PosComp,
+  ScaleComp,
+  SpriteComp,
+} from "kaboom";
 import { scale } from "./constants";
+
+// Create a player as a game object with only specified components
+type PlayerGameObj = GameObj<
+  SpriteComp &
+    AreaComp &
+    BodyComp &
+    PosComp &
+    ScaleComp &
+    DoubleJumpComp &
+    HealthComp &
+    OpacityComp & { speed: number; direction: string; isInhaling: boolean; isFull: boolean }
+>;
 
 export function makePlayer(k: KaboomCtx, posX: number, posY: number) {
   const player = k.make([
@@ -50,7 +73,7 @@ export function makePlayer(k: KaboomCtx, posX: number, posY: number) {
 
   // player collides with exit door
   player.onCollide("exit", () => {
-    k.go("level-2");
+    k.go("level-1");
   });
 
   const inhaleEffect = k.add([
@@ -91,4 +114,77 @@ export function makePlayer(k: KaboomCtx, posX: number, posY: number) {
   });
 
   return player;
+}
+
+export function setControls(k: KaboomCtx, player: PlayerGameObj) {
+  // Get an array of all elements which have inhaleEffect tag
+  const inhaleEffectRef = k.get("inhaleEffect")[0];
+
+  k.onKeyDown((key) => {
+    switch (key) {
+      // left
+      case "a":
+        player.direction = "left";
+        player.flipX = true;
+        player.move(-player.speed, 0);
+        break;
+      // right
+      case "d":
+        player.direction = "right";
+        player.flipX = false;
+        player.move(player.speed, 0);
+        break;
+      // swallow
+      case "f":
+        if (player.isFull) {
+          player.play("kirbFull");
+          inhaleEffectRef.opacity = 0;
+          break;
+        }
+
+        player.isInhaling = true;
+        player.play("kirbInhaling");
+        inhaleEffectRef.opacity = 1;
+        break;
+      default:
+    }
+  });
+
+  k.onKeyPress((key) => {
+    if (key === "space") player.doubleJump();
+  });
+
+  k.onKeyRelease((key) => {
+    if (key === "f") {
+      // player isFull
+      if (player.isFull) {
+        player.play("kirbInhaling");
+        const shootingStar = k.add([
+          k.sprite("assets", {
+            anim: "shootingStar",
+            flipX: player.direction === "right",
+          }),
+          k.area({ shape: new k.Rect(k.vec2(5, 4), 6, 6) }),
+          k.pos(
+            player.direction === "left" ? player.pos.x - 80 : player.pos.x + 80,
+            player.pos.y + 5
+          ),
+          k.scale(scale),
+          player.direction === "left" ? k.move(k.LEFT, 800) : k.move(k.RIGHT, 800),
+          "shootingStar",
+        ]);
+        // destroy star if it hits wall
+        shootingStar.onCollide("platform", () => k.destroy(shootingStar));
+
+        player.isFull = false;
+        k.wait(1, () => player.play("kirbIdle"));
+
+        return;
+      }
+
+      inhaleEffectRef.opacity = 0;
+      player.isInhaling = false;
+      player.play("kirbIdle");
+    }
+  });
 }
